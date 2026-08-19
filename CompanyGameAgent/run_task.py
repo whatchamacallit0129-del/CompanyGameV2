@@ -14,16 +14,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run a CompanyGameAgent task through Cline CLI")
     parser.add_argument("task", type=Path)
     parser.add_argument("--cline", default="cline.cmd" if os.name == "nt" else "cline")
-    parser.add_argument("--auto-approve", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--auto-approve", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--thinking", choices=("none", "low", "medium", "high", "xhigh"), default="high")
     parser.add_argument("--timeout", type=int, default=0)
-    parser.add_argument("--pty", action="store_true", help="Run Cline inside a Windows pseudo-terminal")
+    parser.add_argument("--pty", action="store_true", help="Use Windows PTY fallback instead of normal JSON mode")
     args = parser.parse_args()
 
     task = Task.from_dict(json.loads(args.task.read_text(encoding="utf-8")))
     print(f"[Agent] Task: {task.id}", flush=True)
     print(f"[Agent] Project: {task.project_path}", flush=True)
-    print(f"[Agent] PTY: {args.pty}", flush=True)
+    print(f"[Agent] Mode: {'PTY fallback' if args.pty else 'Cline JSON'}", flush=True)
+    print(f"[Agent] Auto approve: {args.auto_approve}", flush=True)
 
     runner = ClineRunner(
         executable=args.cline,
@@ -42,6 +43,7 @@ def main() -> int:
     if result.stderr:
         print("[Cline stderr]", flush=True)
         print(result.stderr, flush=True)
+    print(f"[Agent] Parsed JSON events: {len(result.events)}", flush=True)
     print("[Agent] Finished.", flush=True)
     return result.returncode
 
