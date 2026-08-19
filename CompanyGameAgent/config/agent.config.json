@@ -1,0 +1,22 @@
+{
+  "agent": {
+    "provider": "cline",
+    "executable": "cline",
+    "auto_approve": false,
+    "timeout_seconds": 1800
+  },
+  "project": {
+    "path": "../"
+  },
+  "validation": {
+    "max_repair_attempts": 2
+  },
+  "git": {
+    "auto_commit": false,
+    "auto_push": false,
+    "remote": "origin"
+  },
+  "unity": {
+    "provider": "coplaydev"
+  }
+}
