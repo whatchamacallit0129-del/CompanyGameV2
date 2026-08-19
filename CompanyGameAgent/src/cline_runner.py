@@ -1,4 +1,9 @@
-"""Cline CLI process adapter for CompanyGameAgent."""
+"""Cline CLI adapter for CompanyGameAgent.
+
+Uses Cline's documented non-interactive JSON mode by default. A Windows
+PTY path remains available as an explicit fallback for commands that really
+require a TTY.
+"""
 from __future__ import annotations
 
 import json
@@ -23,7 +28,7 @@ class ClineResult:
 
 
 class ClineRunner:
-    """Run Cline CLI and optionally give it a pseudo-terminal on Windows."""
+    """Run Cline in documented JSON mode, with optional Windows PTY fallback."""
 
     def __init__(
         self,
@@ -31,7 +36,7 @@ class ClineRunner:
         cwd: Optional[Path] = None,
         timeout_seconds: int = 0,
         thinking: str = "high",
-        auto_approve: bool = False,
+        auto_approve: bool = True,
         retries: int = 3,
         model: Optional[str] = None,
         provider: Optional[str] = None,
@@ -48,9 +53,10 @@ class ClineRunner:
         self.use_pty = use_pty
 
     def build_command(self, prompt: str) -> list[str]:
-        command = [
-            self.executable,
-            "--json",
+        command = [self.executable, "--json"]
+        if self.cwd:
+            command += ["--cwd", str(self.cwd)]
+        command += [
             "--auto-approve",
             "true" if self.auto_approve else "false",
             "--thinking",
@@ -86,22 +92,28 @@ class ClineRunner:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            return ClineResult(-2, self._as_text(exc.stdout), self._as_text(exc.stderr) + "\nCline process timed out.", (), command)
+            return ClineResult(
+                -2,
+                self._as_text(exc.stdout),
+                self._as_text(exc.stderr) + "\nCline process timed out.",
+                (),
+                command,
+            )
         except OSError as exc:
             return ClineResult(-1, "", f"Could not start Cline: {exc}", (), command)
         return self._result(completed.returncode, completed.stdout, completed.stderr, command)
 
     def _run_windows_pty(self, command: tuple[str, ...]) -> ClineResult:
-        """Use Windows ConPTY through pywinpty when installed.
-
-        This is opt-in because normal pipe capture is preferable for pure JSON
-        output. The PTY path exists for Cline tools that explicitly require a TTY.
-        """
         try:
             from winpty import PtyProcess  # type: ignore
         except ImportError:
-            return ClineResult(-3, "", "PTY mode requires the 'pywinpty' package. Install it with: python -m pip install pywinpty", (), command)
-
+            return ClineResult(
+                -3,
+                "",
+                "PTY mode requires pywinpty. Install with: python -m pip install pywinpty",
+                (),
+                command,
+            )
         try:
             command_line = subprocess.list2cmdline(list(command))
             proc = PtyProcess.spawn(command_line, cwd=str(self.cwd) if self.cwd else None)
@@ -121,7 +133,7 @@ class ClineRunner:
             return ClineResult(-1, "", f"Could not start Cline PTY: {exc}", (), command)
 
     def _result(self, returncode: int, stdout: str, stderr: str, command: tuple[str, ...]) -> ClineResult:
-        events = []
+        events: list[dict] = []
         for line in stdout.splitlines():
             try:
                 value = json.loads(line)
