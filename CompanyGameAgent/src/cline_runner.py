@@ -1,7 +1,4 @@
-"""Cline CLI process adapter for CompanyGameAgent.
-
-The core agent can invoke this adapter without depending on Cline internals.
-"""
+"""Cline CLI process adapter for CompanyGameAgent."""
 from __future__ import annotations
 
 import json
@@ -26,7 +23,7 @@ class ClineResult:
 
 
 class ClineRunner:
-    """Run Cline CLI in headless mode with project-local configuration."""
+    """Run Cline CLI and optionally give it a pseudo-terminal on Windows."""
 
     def __init__(
         self,
@@ -38,6 +35,7 @@ class ClineRunner:
         retries: int = 3,
         model: Optional[str] = None,
         provider: Optional[str] = None,
+        use_pty: bool = False,
     ) -> None:
         self.executable = executable
         self.cwd = Path(cwd) if cwd else None
@@ -47,6 +45,7 @@ class ClineRunner:
         self.retries = retries
         self.model = model
         self.provider = provider
+        self.use_pty = use_pty
 
     def build_command(self, prompt: str) -> list[str]:
         command = [
@@ -65,11 +64,16 @@ class ClineRunner:
             command += ["--model", self.model]
         if self.provider:
             command += ["--provider", self.provider]
-        command += [prompt]
+        command.append(prompt)
         return command
 
     def run(self, prompt: str) -> ClineResult:
         command = tuple(self.build_command(prompt))
+        if self.use_pty and os.name == "nt":
+            return self._run_windows_pty(command)
+        return self._run_subprocess(command)
+
+    def _run_subprocess(self, command: tuple[str, ...]) -> ClineResult:
         try:
             completed = subprocess.run(
                 list(command),
@@ -82,28 +86,50 @@ class ClineRunner:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            stdout = self._as_text(exc.stdout)
-            stderr = self._as_text(exc.stderr)
-            return ClineResult(-2, stdout, stderr + "\nCline process timed out.", (), command)
+            return ClineResult(-2, self._as_text(exc.stdout), self._as_text(exc.stderr) + "\nCline process timed out.", (), command)
         except OSError as exc:
             return ClineResult(-1, "", f"Could not start Cline: {exc}", (), command)
+        return self._result(completed.returncode, completed.stdout, completed.stderr, command)
 
+    def _run_windows_pty(self, command: tuple[str, ...]) -> ClineResult:
+        """Use Windows ConPTY through pywinpty when installed.
+
+        This is opt-in because normal pipe capture is preferable for pure JSON
+        output. The PTY path exists for Cline tools that explicitly require a TTY.
+        """
+        try:
+            from winpty import PtyProcess  # type: ignore
+        except ImportError:
+            return ClineResult(-3, "", "PTY mode requires the 'pywinpty' package. Install it with: python -m pip install pywinpty", (), command)
+
+        try:
+            command_line = subprocess.list2cmdline(list(command))
+            proc = PtyProcess.spawn(command_line, cwd=str(self.cwd) if self.cwd else None)
+            chunks: list[str] = []
+            while proc.isalive():
+                try:
+                    chunks.append(proc.read(4096))
+                except EOFError:
+                    break
+            try:
+                chunks.append(proc.read(4096))
+            except EOFError:
+                pass
+            output = "".join(chunks)
+            return self._result(proc.exitstatus if proc.exitstatus is not None else 0, output, "", command)
+        except Exception as exc:
+            return ClineResult(-1, "", f"Could not start Cline PTY: {exc}", (), command)
+
+    def _result(self, returncode: int, stdout: str, stderr: str, command: tuple[str, ...]) -> ClineResult:
         events = []
-        for line in completed.stdout.splitlines():
+        for line in stdout.splitlines():
             try:
                 value = json.loads(line)
                 if isinstance(value, dict):
                     events.append(value)
             except json.JSONDecodeError:
                 continue
-
-        return ClineResult(
-            completed.returncode,
-            completed.stdout,
-            completed.stderr,
-            tuple(events),
-            command,
-        )
+        return ClineResult(returncode, stdout, stderr, tuple(events), command)
 
     @staticmethod
     def _as_text(value: object) -> str:
