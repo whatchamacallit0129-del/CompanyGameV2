@@ -24,9 +24,6 @@ Unity
 - Cline이 Unity 프로젝트를 작업하고 자체 검증한다.
 - 양방향 ChatGPT ↔ Cline 통신은 필수가 아니다.
 
-## 중복 실행 방지
-별도의 중복 실행 방지 시스템은 만들지 않는다. GitHub Actions의 실행 제어 기능을 기본으로 사용한다.
-
 ## 로드맵
 1. Cline 공식 GitHub Actions 연동 구성
 2. ChatGPT → GitHub 명령 등록 구현
