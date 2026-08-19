@@ -9,14 +9,16 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 
 @dataclass(frozen=True)
 class ClineResult:
     returncode: int
     output: str
+    stderr: str
     events: tuple[dict, ...]
+    command: tuple[str, ...]
 
     @property
     def success(self) -> bool:
@@ -32,7 +34,7 @@ class ClineRunner:
         cwd: Optional[Path] = None,
         timeout_seconds: int = 0,
         thinking: str = "high",
-        auto_approve: bool = True,
+        auto_approve: bool = False,
         retries: int = 3,
         model: Optional[str] = None,
         provider: Optional[str] = None,
@@ -67,16 +69,25 @@ class ClineRunner:
         return command
 
     def run(self, prompt: str) -> ClineResult:
-        completed = subprocess.run(
-            self.build_command(prompt),
-            cwd=str(self.cwd) if self.cwd else None,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=self.timeout_seconds if self.timeout_seconds > 0 else None,
-            check=False,
-        )
+        command = tuple(self.build_command(prompt))
+        try:
+            completed = subprocess.run(
+                list(command),
+                cwd=str(self.cwd) if self.cwd else None,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=self.timeout_seconds if self.timeout_seconds > 0 else None,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            stdout = self._as_text(exc.stdout)
+            stderr = self._as_text(exc.stderr)
+            return ClineResult(-2, stdout, stderr + "\nCline process timed out.", (), command)
+        except OSError as exc:
+            return ClineResult(-1, "", f"Could not start Cline: {exc}", (), command)
+
         events = []
         for line in completed.stdout.splitlines():
             try:
@@ -85,7 +96,19 @@ class ClineRunner:
                     events.append(value)
             except json.JSONDecodeError:
                 continue
-        output = completed.stdout
-        if completed.stderr:
-            output += "\n" + completed.stderr
-        return ClineResult(completed.returncode, output, tuple(events))
+
+        return ClineResult(
+            completed.returncode,
+            completed.stdout,
+            completed.stderr,
+            tuple(events),
+            command,
+        )
+
+    @staticmethod
+    def _as_text(value: object) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        return str(value)
