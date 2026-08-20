@@ -1,1 +1,0 @@
-Cline task: Inspect the Unity project in this repository and report the current Unity Hierarchy (scene GameObjects), including the active scene name and the top-level objects. Do not modify any files. Write the report to agent-results/hierarchy-report.txt and commit it to main.
