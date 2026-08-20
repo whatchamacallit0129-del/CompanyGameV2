@@ -1,6 +1,9 @@
 name: Cline
 
 on:
+  push:
+    paths:
+      - 'agent-queue/pending/**'
   workflow_dispatch:
 
 jobs:
@@ -20,7 +23,14 @@ jobs:
       - name: Install Cline CLI
         run: npm install -g cline
 
-      - name: Check Cline CLI
+      - name: Run queued Cline task
         env:
           CLINE_API_KEY: ${{ secrets.CLINE_API_KEY }}
-        run: cline --version
+        run: |
+          TASK_FILE=$(find agent-queue/pending -maxdepth 1 -type f | sort | head -n 1)
+          if [ -z "$TASK_FILE" ]; then
+            echo "No pending Cline task found."
+            exit 0
+          fi
+          echo "Running task from: $TASK_FILE"
+          cline --auto-approve true -k "$CLINE_API_KEY" "$(cat "$TASK_FILE")"
