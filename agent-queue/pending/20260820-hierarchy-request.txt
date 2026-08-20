@@ -1,0 +1,1 @@
+Inspect the Unity project and report the current Unity Hierarchy, including the active scene name and top-level GameObjects. Use the Unity/MCP capabilities available to Cline if needed. Do not modify the Unity project for this task. Write the report to agent-results/hierarchy-report.txt. After completing the report, commit the result to main.
