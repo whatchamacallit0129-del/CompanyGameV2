@@ -1,0 +1,25 @@
+name: Cline
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cline:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run Cline
+        env:
+          CLINE_API_KEY: ${{ secrets.CLINE_API_KEY }}
+        run: |
+          npx -y cline --version
+          echo "Cline CLI is available."
