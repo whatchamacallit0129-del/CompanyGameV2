@@ -1,0 +1,67 @@
+name: Cline Issue Assistant
+
+on:
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  issues: write
+  contents: write
+
+jobs:
+  respond:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for @cline mention
+        id: detect
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.comment?.body || "";
+            const isPR = !!context.payload.issue?.pull_request;
+            const hit = body.toLowerCase().includes("@cline");
+            core.setOutput("hit", (!isPR && hit) ? "true" : "false");
+            core.setOutput("issue_number", String(context.payload.issue?.number || ""));
+            core.setOutput("issue_url", context.payload.issue?.html_url || "");
+            core.setOutput("comment_body", body);
+
+      - name: Checkout repository
+        if: steps.detect.outputs.hit == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: steps.detect.outputs.hit == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Cline CLI
+        if: steps.detect.outputs.hit == 'true'
+        run: npm install -g cline
+
+      - name: Configure Cline Authentication
+        if: steps.detect.outputs.hit == 'true'
+        run: cline auth --provider openrouter --apikey "${{ secrets.OPENROUTER_API_KEY }}"
+
+      - name: Run Cline
+        if: steps.detect.outputs.hit == 'true'
+        env:
+          ISSUE_URL: ${{ steps.detect.outputs.issue_url }}
+          COMMENT: ${{ steps.detect.outputs.comment_body }}
+        run: |
+          set -euo pipefail
+          cline --auto-approve true --json "Work on this GitHub issue in the checked-out repository. Read the user's request and make the requested changes. Issue: ${ISSUE_URL}. User request: ${COMMENT}" | tee cline-output.json
+
+      - name: Post completion comment
+        if: steps.detect.outputs.hit == 'true'
+        uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ steps.detect.outputs.issue_number }}
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body: "Cline 작업이 GitHub Actions에서 실행되었습니다. Actions 로그에서 결과를 확인하세요."
+            });
