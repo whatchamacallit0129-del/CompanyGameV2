@@ -18,9 +18,9 @@ jobs:
           node-version: 22
 
       - name: Install Cline CLI
-        run: npm install -g @cline/cli
+        run: npm install -g cline
 
       - name: Check Cline CLI
         env:
           CLINE_API_KEY: ${{ secrets.CLINE_API_KEY }}
-        run: cline version
+        run: cline --version
