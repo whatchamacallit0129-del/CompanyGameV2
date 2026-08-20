@@ -16,10 +16,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
-      - name: Run Cline
+      - name: Install Cline CLI
+        run: npm install -g @cline/cli
+
+      - name: Check Cline CLI
         env:
           CLINE_API_KEY: ${{ secrets.CLINE_API_KEY }}
-        run: |
-          npx -y cline --version
-          echo "Cline CLI is available."
+        run: cline version
